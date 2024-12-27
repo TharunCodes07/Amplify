@@ -9,7 +9,7 @@ import getAudio from '@/functions/toSpeech';
 import Bot from '../components/TaskBot';
 import BotRecording from '../components/TaskRecording';
 import BotSpeaking from '../components/TaskSpeaking';
-// import {router} from 'expo-router';
+import {useRouter} from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 
 
@@ -40,6 +40,7 @@ export default function Tasks({ navigation }: any) {
   const [activeTab, setActiveTab] = useState('Tasks');
   const indicatorAnim = useRef(new Animated.Value(tabItemWidth)).current;
   const isFocused = useIsFocused();
+  const router = useRouter()
 
 
   useEffect(() => {
@@ -147,7 +148,11 @@ export default function Tasks({ navigation }: any) {
       <TouchableOpacity
         style={styles.taskContainer}
         onPress={() => {
-          console.log(`/viewTask/${item.task_id}`)}}
+          navigation.navigate('ViewTask', { taskId: item.task_id });
+        }}
+        
+        
+
       >
         <Text style={styles.taskTitle}>{trimmedTask}</Text>
         <View style={styles.taskStatusContainer}>

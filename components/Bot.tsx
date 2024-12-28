@@ -8,7 +8,7 @@ const Bot = () => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim, {
-          toValue: -10,
+          toValue: -5,
           duration: 1500,
           useNativeDriver: true,
         }),
@@ -30,14 +30,14 @@ const Bot = () => {
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: 3,
-    left: -40,
+    alignItems: 'center',
   },
   image: {
-    width: 200,
-    height: 200,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
 });
 
-export default Bot; 
+export default Bot;
+

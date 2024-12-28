@@ -10,6 +10,7 @@ app = FastAPI()
 import requests
 import time
 
+
 @app.on_event("startup")
 async def startup_event():
     db_config = {
@@ -129,7 +130,6 @@ async def review(request:ReviewRequest):
                 )
             status = response.json()["data"]["status"]
             print(status)
-
             if status == "completed":
                 video_url = response.json()["data"]["video_url"]
                 thumbnail_url = response.json()["data"]["thumbnail_url"]

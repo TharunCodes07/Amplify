@@ -1,19 +1,39 @@
 from langchain_groq import ChatGroq
-llm = ChatGroq(groq_api_key = "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",model_name = "llama-3.1-70b-versatile")
+import os
 from langchain import PromptTemplate
 import psycopg2
 from psycopg2 import sql
 from langchain.tools import tool
-import os
+from langchain_core.messages import ToolMessage
+from langchain_core.runnables import RunnableLambda
+from langgraph.prebuilt import ToolNode
+from langchain_community.tools.tavily_search import TavilySearchResults
+from typing import Annotated
+from typing_extensions import TypedDict
+from langgraph.graph.message import AnyMessage, add_messages
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import LLMChain
+from langchain_core.prompts import PromptTemplate
+import google.generativeai as genai
+from dotenv import load_dotenv
+import json
+import time
+
+load_dotenv()
+llm = ChatGroq(groq_api_key = os.getenv("GROQ_API_KEY"),model_name = "llama-3.1-70b-versatile")
+GOOGLE_API_KEY=os.getenv('GOOGLE_API_KEY')
+genai.configure(api_key=GOOGLE_API_KEY)
+
 
 @tool("generate_scenario")
-def generate_scenario(user_id):
+def generate_scenario(user_id,interest):
     """
     Generates a thought-provoking but relatable scenario where the user is speaking at a public event
     and stores it in the user's tasks table as an uncompleted task. The task is associated with the user_id, an integer.
 
     Args:
         user_id (int): The user_id of the user for whom the scenario is generated and stored.
+        interest (str): The field in which the user expects the genrated scenario to be 
     
     Returns:
         str: A detailed scenario for public speaking based on the user's preferences.
@@ -26,38 +46,93 @@ def generate_scenario(user_id):
     "dbname": os.getenv("DB_NAME"),
     }
 
-    prompt = '''
-    You are an expert event planner specializing in creating engaging public speaking scenarios. 
-    Your task is to craft a realistic, thought-provoking scenario where the user is invited to speak 
-    at a public event. The event should be focused on a meaningful yet everyday topic, relevant to 
-    the real world. Describe the scenario in vivid detail, including:
+    template = '''
+    You are tasked with generating engaging, innovative, and easy-to-understand public speaking scenarios. Each scenario should provide the user with a unique opportunity to practice their speaking skills. Ensure the scenario is fresh and has not been generated for this user before, leveraging memory to avoid repetitions. Additionally, incorporate the user's specified field or genre of interest when provided. If no interest is specified (NULL), proceed with generating a general scenario as usual.
+    ## User Interest : {interest}
 
-    1. The type of event (e.g., a community gathering, a corporate seminar, a university lecture).
-    2. The audience composition (e.g., professionals, students, general public).
-    3. The topic of the speech, ensuring it is relevant to the event's theme and thought-provoking.
-    4. The atmosphere and setting of the event, including details like the venue and mood.
-    5. Any challenges or unique aspects the speaker might face, such as audience questions or time constraints.
+    ### Guidelines for Scenario Generation:
+    1. **Engagement and Clarity**:
+    - The scenario must be intriguing and relatable to encourage user participation.
+    - Keep the description crisp and clear, focusing only on essential details while maintaining creativity and interest.
 
-    Ensure the scenario is engaging and encourages the user to reflect on the importance of their role 
-    as a speaker. Keep the description straightforward and relatable. 
-    '''
+    2. **Skill Development**:
+    - Design scenarios that challenge the user in a constructive way, helping them improve aspects of public speaking such as confidence, clarity, storytelling, persuasion, or audience engagement.
+    - The scenario should align with real-life speaking opportunities, such as professional, social, or creative settings.
+
+    3. **Incorporating User Interests**:
+    - If the user specifies a field or genre of interest (e.g., motivational speaking, professional presentations, storytelling):
+        - Tailor the scenario to align with the specified interest.
+        - Ensure the scenario remains engaging and relevant to the user’s goals.
+    - If the user specifies "nothing specific" or the interest is NULL:
+        - Explicitly proceed with generating a general scenario while adhering to the outlined guidelines.
+
+    4. **Scenario Structure**:
+    - **Title**: Provide a descriptive and creative title that captures the essence of the scenario.
+    - **Setup**: Briefly describe the context or situation where the user will speak.
+    - **Task**: Clearly outline the objective of the speech or presentation, emphasizing the speaking skills they will practice.
+
+    5. **Examples of Scenarios**:
+    - **Title**: "Inspiring Entrepreneurs: A Community Celebration"
+        **Setup**: You have been invited to host a community event celebrating local entrepreneurs. The audience includes aspiring business owners, established entrepreneurs, and community members.
+        **Task**: Your task is to deliver an opening speech that sets an inspiring and positive tone for the evening, highlighting the importance of entrepreneurship and community support.
+
+    - **Title**: "Career Insights: Inspiring the Next Generation"
+        **Setup**: Imagine you are addressing a group of high school students at their career day. They are eager to learn about various professions and future opportunities.
+        **Task**: Share insights about your profession, narrate an impactful personal experience, and inspire them to explore their passions confidently.
+
+    - **Title**: "The Big Pitch: Securing Startup Funding"
+        **Setup**: You are presenting your innovative startup idea to a group of investors at a professional conference. The stakes are high, and the room is filled with potential backers.
+        **Task**: Clearly explain your concept, outline its unique value, and persuade the investors to provide funding, while handling potential questions with confidence.
+
+    - **Title**: "A Toast to Love: Wedding Speech"
+        **Setup**: You are the best man/maid of honor at a close friend’s wedding. The reception hall is packed with friends, family, and well-wishers.
+        **Task**: Deliver a heartfelt and entertaining toast that celebrates the couple, shares a personal anecdote, and leaves a lasting impression on the guests.
+
+    - **Title**: "The Climate Debate: A Public Forum"
+        **Setup**: You are moderating a panel discussion on climate change at a community forum. The panel includes scientists, activists, and local policymakers.
+        **Task**: Introduce the topic, engage the panelists with insightful questions, manage audience interactions, and summarize key takeaways at the end.
+
+    6. **Memory Usage**:
+    - Check previous scenarios generated for the user to avoid repetition.
+    - Ensure the generated scenario adds value and novelty to the user's learning experience.
+    - Do not generate scenarios that match the user's past responses.
+
+    7. **Tone and Accessibility**:
+    - Maintain a supportive and friendly tone in the scenario description.
+    - Use language that is simple and easy to understand for users of all proficiency levels.
+
     
+
+    ### Notes:
+    - Previous Responses: {chat_history}
+    - Strongly prioritize incorporating the user's interest if provided. If the interest is NULL, proceed with a general scenario while maintaining creativity and relevance.
+    - Avoid generating scenarios that have already been given to the user.
+'''
+
+    prompt = PromptTemplate.from_template(template)
     connection = None
     cursor = None
-
     try:
-        response = llm.invoke(prompt)
+        memory = ConversationBufferMemory(memory_key="chat_history")
+        model = LLMChain(
+        llm=llm,
+        prompt=prompt,
+        verbose=True,
+        memory=memory
+        )
+
+
+        response = model({"interest":interest})
+        scenario = response.get('text')
         connection = psycopg2.connect(**db_config)
         cursor = connection.cursor()
         # Insert the scenario into the user's tasks table
         insert_query = sql.SQL(
             "INSERT INTO tasks (user_id, task, completed, score) VALUES (%s, %s, %s, %s)"
         )
-        cursor.execute(insert_query, (user_id, response.content, False, None))
+        cursor.execute(insert_query, (user_id, scenario, False, None))
         connection.commit()
-        print(response.content)
-
-        return f"Scenario successfully generated {response.content}"
+        return f"Scenario successfully generated {response['text']}"
 
     except psycopg2.Error as e:
         return f"Database error: {e}"
@@ -69,71 +144,8 @@ def generate_scenario(user_id):
         if connection:
             connection.close()
 
-from langchain.tools import tool
 
-@tool("review_speech")
-def review_speech(scenario):
-    """
-    Reviews a user's speech video based on the provided scenario. The function evaluates the content, 
-    pronunciation, and facial expressions of the user and provides actionable feedback on areas for improvement. 
-    Additionally, it scores each category strictly out of 10, where a 10 represents near perfection.
-
-    Args:
-        scenario (str): The scenario or context for the speech.
-    Returns:
-        dict: A detailed review with suggestions and scores for content, pronunciation, and facial expressions.
-    """
-    from langchain_core.prompts import PromptTemplate
-    print("genreating scenario")
-
-
-    template = '''
-    You are a professional speech coach with expertise in public speaking, communication skills, 
-    and body language analysis. Your task is to review the user's speech performance based on the given scenario 
-    and the content of their speech video. Provide detailed feedback in the following areas:
-
-    1. **Content**: Evaluate the relevance, structure, and impact of the speech content. Highlight strengths 
-       and suggest improvements for clarity, engagement, and alignment with the scenario's topic.
-
-    2. **Pronunciation**: Assess the user's pronunciation, enunciation, and fluency. Identify areas where the 
-       user could improve to make their delivery clearer and more professional.
-
-    3. **Facial Expressions**: Review the user's facial expressions and non-verbal cues. Suggest ways to make 
-       their expressions more engaging, appropriate, and aligned with the speech's tone.
-
-    Provide specific examples and actionable suggestions for each category. Then, strictly score the user's 
-    performance in each area out of 10, where 10 represents near perfection, 7-9 represents excellent with minor 
-    improvements needed, 5-6 represents average with noticeable room for improvement, and below 5 represents 
-    significant issues requiring attention.
-
-    Scenario: {scenario}
-
-    Provide the feedback and scores in this structured format:
-    - Content Feedback:
-      [Detailed feedback]
-    - Pronunciation Feedback:
-      [Detailed feedback]
-    - Facial Expressions Feedback:
-      [Detailed feedback]
-    - Scores:
-      - Content: [Score out of 10]
-      - Pronunciation: [Score out of 10]
-      - Facial Expressions: [Score out of 10]
-    '''
-
-    prompt = PromptTemplate(
-        input_variables=['scenario'],
-        template=template
-    )
     
-    response = llm(prompt.format(scenario=scenario))
-    return response
-
-from langchain_core.messages import ToolMessage
-from langchain_core.runnables import RunnableLambda
-
-from langgraph.prebuilt import ToolNode
-
 
 def handle_tool_error(state) -> dict:
     error = state.get("error")
@@ -148,121 +160,90 @@ def handle_tool_error(state) -> dict:
         ]
     }
 
-
 def create_tool_node_with_fallback(tools: list) -> dict:
     return ToolNode(tools).with_fallbacks(
         [RunnableLambda(handle_tool_error)], exception_key="error"
     )
 
-
-def _print_event(event: dict, _printed: set, max_length=1500):
-    current_state = event.get("dialog_state")
-    if current_state:
-        print("Currently in: ", current_state[-1])
-    message = event.get("messages")
-    if message:
-        if isinstance(message, list):
-            message = message[-1]
-        if message.id not in _printed:
-            msg_repr = message.pretty_repr(html=True)
-            if len(msg_repr) > max_length:
-                msg_repr = msg_repr[:max_length] + " ... (truncated)"
-            print(msg_repr)
-            _printed.add(message.id)
-from typing import Annotated
-
-from typing_extensions import TypedDict
-
-from langgraph.graph.message import AnyMessage, add_messages
-
-
+s
 class State(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 template = '''
-You are a highly intelligent and interactive assistant that uses three tools—`generate_scenario`, `review_speech`, and —to provide users with a seamless and engaging experience.
+You are an AI model designed to act as a friendly and engaging assistant for a public speaking improvement app. Your primary role is to interact with users in a conversational and supportive way, while also helping them complete tasks to improve their public speaking skills. You have access to two tools: `generate_scenario` and `TavilySearchResults`. Use these tools when necessary to provide meaningful and helpful responses.
 
-The following variables have been provided:
-- **Username**: A string representing the user's name.
-- **user_id**: A unique identifier for the user, used as an argument in the generate_scenario tool.
-- **Incomplete Tasks**: A string containing the details of an incomplete task, or `NULL` if no tasks are pending.
+### Key Behavior and Response Guidelines:
 
-user_id = UserName:tharun, id:1, Incmplete Tasks: NULL
+1. **General Conversation**:
+   - Always reply in a friendly, engaging tone, similar to how a supportive friend would respond.
+   - Address the user by their username to maintain a personal and approachable interaction style.
+   - Avoid overly technical or robotic responses—keep the conversation warm and human-like.
+   - Never respond to vulgar, offensive, or inappropriate language. Politely indicate that such language is unacceptable, but maintain professionalism.
 
-If u genetate a task return a very brief and concise description of the task as a response
-Use the username to make your responses engaging where appropriate but avoid overusing it. Respond dynamically based on the provided `Incomplete Tasks` variable.
+2. **Incomplete Tasks Handling**:
+   - If the user's incomplete tasks field is NULL:
+     - Ask the user if they would like to create a new task or scenario.
+     - If they reply "yes":
+       - Ask the user if there is a specific field or genre they would like the scenario to focus on (e.g., motivational speaking, professional presentations, storytelling).
+       - If the user specifies an interest, pass it as the `interest` argument to the `generate_scenario(user_id, interest)` tool.
+       - If the user says "there’s nothing specific," pass `NULL` as the `interest` argument and proceed with scenario generation.
+       - Provide a very brief and clear description of the generated scenario, focusing only on the most important details (e.g., "You’ve been tasked with delivering an inspiring speech at a school graduation ceremony.").
+     - If the user replies "no," continue assisting them with general queries or conversation.
 
-### Tools Overview:
-1. **generate_scenario**:
-   - **Input**: `user_id` (int)
-   - Generate a new public speaking task for the user.
-   - Save the task as incomplete for the user.
+3. **Tool Usage**:
+   - **`generate_scenario`**:
+     - Use this tool when the user requests a new scenario for practicing public speaking or when the incomplete tasks field is NULL and the user agrees to create a new task.
+     - Before invoking the tool, ask the user about any specific interest or field they would like the scenario to target.
+   - **`TavilySearchResults(max_results=3)`**:
+     - Use this tool if the user asks for detailed or up-to-date information that cannot be answered directly, such as information about public speaking techniques, famous speeches, or current events.
+   - Avoid using tools unnecessarily. Only invoke a tool if it is clear that the user's query requires it or if it improves the interaction.
 
-2. **review_speech**:
-   - **Input**: `scenario` (string)
-   - Review a video provided by the user for a specific task scenario.
-   - Provide actionable feedback and strict scores for Content, Pronunciation, and Facial Expressions.
-   - Store the scores in the database.
+4. **Guidance and Growth**:
+   - For every user interaction related to public speaking, aim to motivate and guide them. Provide actionable tips or advice where relevant.
+   - If a user asks for feedback or tips about public speaking, respond directly with insights, avoiding the use of tools unless specific research is needed.
 
-### Instructions:
-1. **Handle Incomplete Tasks**:
-   - If the `Incomplete Tasks` variable is `NULL`:
-     - Use the `generate_scenario` tool to create a new task.
-     - Construct a response: "Here's your new task: (generated_task)."
-     - Use `final_answer` to send this response to the user.
-   - If the `Incomplete Tasks` variable is not `NULL`:
-     - Construct an engaging and concise response explaining the scenario, including all key points from the provided task details.
-     - Example: "You have an unfinished task: 'Deliver a speech on the importance of mental health.' Please complete it before starting a new one."
+5. **Handling User Queries**:
+   - If the query is straightforward and doesn’t require tool invocation (e.g., "What’s the best way to calm nerves before speaking?"), respond directly with practical advice.
+   - If the query is vague or unclear, ask clarifying questions to better understand the user's needs.
+   - If the query is unrelated to public speaking but within general conversation scope, respond naturally to maintain engagement.
 
-2. **Generate New Task**:
-   - When prompted by the user to start a new task, use the `generate_scenario` tool.
-   - Construct a response with the generated task description and save it as incomplete for the user.
-   - Example: "Here's your new task: (generated_task)."
+6. **Memory and Personalization**:
+   - Utilize memory to recall ongoing tasks, preferences, and interactions with the user.
+   - Ensure that any new scenarios or tasks are appropriately stored and associated with the user ID.
 
-3. **Review Speech**:
-   - If the user provides a video, use the `review_speech` tool.
-   - Construct the response with:
-     - Detailed feedback for Content, Pronunciation, and Facial Expressions.
-     - Strict scores for each category.
-     - Acknowledgment that the scores have been saved.
+7. **Restrictions**:
+   - Do not generate or support inappropriate, vulgar, or harmful content.
+   - Avoid using the tools for queries that can be answered directly without them.
 
-4. **General Behavior**:
-   - Be engaging, clear, and helpful in your responses.
-   - Confirm user actions before proceeding where necessary.
-   - Handle errors gracefully and provide guidance for retrying if needed.
+### Example Interactions:
 
-### Example Scenarios:
+**Scenario 1: User with NULL Incomplete Tasks**
+User Query: "I don't see any tasks. Can you help me create one?"
+Response: "Sure, would you like me to generate a new public speaking scenario for you? Let me know!"
 
-1. **Incomplete Task Provided**:
-   - **Variable `Incomplete Tasks`**: 'Speak about the importance of mental health in a community seminar.'
-   - **Assistant**:
-     Construct the response: "You have an unfinished task: 'Speak about the importance of mental health in a community seminar.' Please complete it before starting a new one."
+- If the user says "yes":
+  - Respond: "Is there a specific field or genre you’d like the scenario to focus on? For example, motivational speaking, professional presentations, or storytelling?"
+    - If the user specifies an interest, use `generate_scenario(user_id, interest)` and pass the interest provided by the user.
+    - If the user says "there’s nothing specific," use `generate_scenario(user_id, NULL)`.
+  - Respond with a brief description of the scenario: "Here’s your new task: You’ll be presenting an award speech at a local charity event. Let me know when you’re ready to start!"
+- If the user says "no":
+  - Respond: "Alright, feel free to ask me anything else or let me know if you'd like to create a task later!"
 
-2. **No Incomplete Task**:
-   - **Variable `Incomplete Tasks`**: `NULL`
-   - **Assistant**:
-     Use the `generate_scenario` tool to create a new task.
-     Construct the response: "Here's your new task: 'Deliver a speech on the impact of technology in education at a university lecture.'"
+**Scenario 2: User Asks for Public Speaking Tips**
+User Query: "What’s the best way to start a speech?"
+Response: "Starting strong is key! You can begin with a powerful quote, a compelling story, or even a surprising fact that grabs attention. What kind of speech are you preparing for?"
 
-3. **Video Review**:
-   - **Assistant**:
-     Construct the response:
-       ```
-       Great job! Here’s your feedback:
-       - **Content**: Your speech was well-structured and engaging. However, consider adding more examples to clarify your points.
-       - **Pronunciation**: Clear and fluent for the most part, but some words were slightly rushed—practice pacing.
-       - **Facial Expressions**: Good use of expressions to emphasize points. Could smile more to connect better with the audience.
-       - Scores:
-         - Content: 8/10
-         - Pronunciation: 7/10
-         - Facial Expressions: 8/10
-       ```
-       "Your scores have been saved. Keep up the great work!"
+**Scenario 3: Inappropriate Language**
+User Query: "This app is stupid!"
+Response: "I’m here to help you improve your speaking skills and provide a positive experience. Let’s keep the conversation respectful and focused on growth."
 
-4. **Error Handling**:
-   - **Assistant**:
-     Construct the response: "Oops, something went wrong. Please try again after some time."
+**Scenario 4: Web Search Requirement**
+User Query: "Can you find some examples of TED talks on overcoming fear?"
+Response: (Invoke `TavilySearchResults(max_results=3)` with a query for TED talks on overcoming fear, then summarize results briefly.)
 
-Stay interactive, engaging, and proactive in assisting the user with their public speaking journey!
+### Important Notes:
+- Be proactive in assisting users and encouraging their growth.
+- Keep responses concise yet engaging and informative.
+- Use tools strategically to enhance the user experience without over-relying on them.
 '''
 
 from langchain_community.tools.tavily_search import TavilySearchResults
@@ -305,13 +286,15 @@ prompt = ChatPromptTemplate.from_messages(
 
 tools = [
     generate_scenario,
-    review_speech
-    
+    TavilySearchResults(max_results=3)
 ]
+
+
 runnable = prompt | llm.bind_tools(tools)
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph, START
 from langgraph.prebuilt import tools_condition
+
 
 builder = StateGraph(State)
 
@@ -355,3 +338,105 @@ def askAgent(query:str,config:dict) -> str:
         {"messages": ("user", query)}, config
     )
     return out.get("messages")[-1].content
+
+def score(video_url,task,task_id):
+    db_config = {
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "host": os.getenv("DB_HOST"),
+    "port": os.getenv("DB_PORT"),
+    "dbname": os.getenv("DB_NAME"),
+    }
+    model = genai.GenerativeModel(model_name="gemini-1.5-pro")
+    prompt = f'''
+    You are an advanced scoring AI tool designed to evaluate user-submitted videos of public speaking tasks. Your role is to analyze the video and its corresponding task, providing constructive feedback and scores to help users improve their public speaking skills. Your response must include only the evaluation output in the specified JSON format and exclude any code block syntax or additional text.
+
+    ### Evaluation Guidelines:
+
+    1. **Feedback Description**:
+      - Provide a detailed, 2000-character feedback description in paragraph format.
+      - This feedback should:
+        - Explain areas where the user performed well and areas needing improvement.
+        - Offer actionable advice on how the user can enhance their public speaking skills in alignment with the task.
+        - Focus on key aspects of public speaking, such as structure, clarity, delivery, engagement, and alignment with the task.
+        - Maintain a constructive, encouraging, and friendly tone.
+
+    2. **Scoring Criteria**:
+      - Evaluate the user's performance across three key areas, each scored on a scale from 0 to 100:
+        - **CONTENT**:
+          - Assess how well the speech content aligns with the given task.
+          - Consider factors such as relevance, structure, depth, and creativity of the content.
+        - **FLUENCY**:
+          - Evaluate the user's speech fluency, including smoothness, pace, and lack of interruptions or filler words.
+        - **EXPRESSION**:
+          - Analyze the user's body language, gestures, facial expressions, and emotional engagement with the audience.
+
+    3. **Output Format**:
+      - Provide the evaluation strictly in this format:
+        {{
+          "feedback_description": "2000-character long feedback in paragraph format.",
+          "scores": {{
+            "content": 0-100,
+            "fluency": 0-100,
+            "expression": 0-100
+          }}
+        }}
+
+    4. **Unacceptable Format**:
+      - Do NOT include any code block syntax like ` ```json ` or any enclosing text outside the JSON.
+      - Example of unacceptable format:
+        ```
+        ```json
+        {{
+          "feedback_description": "Example feedback.",
+          "scores": {{
+            "content": 90,
+            "fluency": 85,
+            "expression": 80
+          }}
+        }}
+        ```
+        ```
+
+    ### IMPORTANT:
+    - Output only the JSON content as specified in the **Output Format** section.
+    - Do not include any explanations, comments, or additional text outside the structured JSON output.
+
+    CURRENT TASK: {task}
+    '''
+
+
+    connection = None
+    cursor = None
+    try:
+      video_file = genai.upload_file(path=video_url)
+      print(f"Completed upload: {video_file.uri}")
+      while video_file.state.name == "PROCESSING":
+        time.sleep(10)
+        video_file = genai.get_file(video_file.name)
+
+      if video_file.state.name == "FAILED":
+        raise ValueError(video_file.state.name)
+      response = model.generate_content([video_file,prompt],
+                                    request_options={"timeout": 600})
+      parsed_output = json.loads(response.text)
+      connection = psycopg2.connect(**db_config)
+      cursor = connection.cursor()
+
+      update_query = sql.SQL("""
+            UPDATE tasks
+            SET score = %s, completed = TRUE
+            WHERE task_id = %s
+        """)
+      cursor.execute(update_query, (json.dumps(parsed_output["scores"]), task_id))
+      connection.commit()
+      return parsed_output
+    except psycopg2.Error as e:
+       print(f'Databse Error: {e}')
+    except Exception as e:
+        return f"Error scoring: {e}"
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()

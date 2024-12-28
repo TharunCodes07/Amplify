@@ -1,26 +1,46 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
+import { StyleSheet } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
-
-export const Colors = {
-  light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
-  },
-  dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
-  },
+export const COLORS = {
+  background: '#FFFFFF',
+  text: '#000000',
+  textSecondary: '#4A4A4A',
+  textTertiary: '#9A9A9A',
+  border: '#E0E0E0',
+  buttonBackground: '#F5F5F5',
+  buttonBackgroundPressed: '#EBEBEB',
+  primary: '#3498db',
+  secondary: '#2ecc71',
+  tertiary: '#e74c3c',
 };
+
+export const FONTS = {
+  regular: 'Roboto',
+  bold: 'Roboto-Bold',
+};
+
+export const GlobalStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  text: {
+    fontFamily: FONTS.regular,
+    color: COLORS.text,
+  },
+  boldText: {
+    fontFamily: FONTS.bold,
+    color: COLORS.text,
+  },
+  heading: {
+    fontFamily: FONTS.bold,
+    fontSize: 24,
+    color: COLORS.text,
+    marginBottom: 16,
+  },
+  subheading: {
+    fontFamily: FONTS.bold,
+    fontSize: 18,
+    color: COLORS.textSecondary,
+    marginBottom: 8,
+  },
+});

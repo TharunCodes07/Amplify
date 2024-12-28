@@ -2,61 +2,51 @@ import React, { useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, Animated } from 'react-native';
 
 const BotRecording = () => {
-  const floatAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(floatAnim, {
-          toValue: -10,
-          duration: 1500,
+        Animated.timing(pulseAnim, {
+          toValue: 1.2,
+          duration: 1000,
           useNativeDriver: true,
         }),
-        Animated.timing(floatAnim, {
-          toValue: 0,
-          duration: 1500,
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
           useNativeDriver: true,
         }),
       ])
     ).start();
-  }, [floatAnim]);
+  }, [pulseAnim]);
 
   return (
-    <Animated.View style={[styles.container, { transform: [{ translateY: floatAnim }] }]}>
+    <View style={styles.container}>
+      <Animated.View style={[styles.pulseCircle, { transform: [{ scale: pulseAnim }] }]} />
       <Image source={require('../assets/images/bot.png')} style={styles.image} />
-      <View style={styles.soundWaveContainer}>
-        <View style={styles.wave} />
-        <View style={styles.wave} />
-        <View style={styles.wave} />
-      </View>
-    </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: 3,
-    left: -40,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseCircle: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(74, 144, 226, 0.3)',
   },
   image: {
-    width: 200,
-    height: 200,
-  },
-  soundWaveContainer: {
-    flexDirection: 'row',
-    marginTop: -20,
-  },
-  wave: {
-    width: 10,
-    height: 10,
-    backgroundColor: '#000',
-    borderRadius: 5,
-    marginHorizontal: 5,
-    opacity: 0.3,
-    animation: 'speak 1s infinite',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
 });
 
-export default BotRecording; 
+export default BotRecording;
+

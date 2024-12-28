@@ -47,7 +47,7 @@ export default function Tasks({ navigation }: any) {
       if (isFocused) {
         setActiveTab('Tasks');
         Animated.spring(indicatorAnim, {
-          toValue: 1 * tabItemWidth, // Set to 'Home' tab index
+          toValue: 1 * tabItemWidth, 
           useNativeDriver: true,
         }).start();
       }

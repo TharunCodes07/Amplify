@@ -80,7 +80,7 @@ CREATE TABLE users (
     username VARCHAR(255) NOT NULL,          -- Username field
     email VARCHAR(255) UNIQUE NOT NULL,      -- Email field (unique)
     password VARCHAR(255) NOT NULL,          -- Password field
-    average_scores JSON NOT NULL,            -- Stores the average of all the scores that the user has so far
+    avg_scores JSON NOT NULL,            -- Stores the average of all the scores that the user has so far
     tasks_completed INT DEFAULT 0           -- Stores the total number of completed tasks (default: 0)
 );
 

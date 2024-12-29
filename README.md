@@ -1,50 +1,129 @@
-# Welcome to your Expo app 👋
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+# Amplify: AI-Powered Public Speaking Assistant
 
-## Get started
+Amplify is an AI-driven application designed to help users enhance their public speaking skills in a judgment-free environment. The app provides personalized feedback, video analysis, and interactive learning experiences to combat public speaking anxiety and improve communication abilities.
 
-1. Install dependencies
+Targeting students, professionals, and individuals across diverse demographics, Amplify offers an accessible, non-judgmental, and user-friendly platform for public speaking improvement.
 
-   ```bash
-   npm install
-   ```
 
-2. Start the app
 
-   ```bash
-    npx expo start
-   ```
 
-In the output, you'll find options to open the app in a
+## Features
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Speech-to-Text Analysis: Powered by Whisper-large-v3 for precise speech transcription.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- AI Feedback Mechanisms: Using Groq-llama3-70billion for personalized interaction.
 
-## Get a fresh project
+- Video Analysis: Enabled by Gemini-experimental-1206 for multimodal evaluation.
 
-When you're ready, run:
+- Dynamic Video Feedback: Feedback videos generated using HeyGen.
+
+- Text-to-Speech Conversion: Seamlessly integrated through Deepgram.
+
+- Cross-Platform Compatibility: Built using React Native and Expo.
+## Tech Stack
+
+### Frontend:
+- React Native with Expo
+
+### Backend: 
+- Python 
+- FastAPI 
+- Deepgram
+- Groq
+- Supabase
+
+[![workflow-2.png](https://i.postimg.cc/t4WXm328/workflow-2.png)](https://postimg.cc/DSfkSXVc)
+
+- AI Models: Groq-llama3-70billion, Gemini-experimental-1206, Whisper-large-v3
+
+- Video Tools: HeyGen
+
+- Text-to-Speech: Deepgram
+
+- Cloud Services: Cloudinary
+
+
+
+[![workflow-3.png](https://i.postimg.cc/CMGsYXdK/workflow-3.png)](https://postimg.cc/5jtCSPBc)
+## Setup Instructions
+
+1. Clone the Repository
 
 ```bash
-npm run reset-project
+  git clone  https://github.com/TharunCodes07/Amplify
+  cd amplify
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+2. Install Dependencies
 
-## Learn more
+```bash
+  npm install
+  pip install -r requirements.txt
 
-To learn more about developing your project with Expo, look at the following resources:
+```
+3. Create a supabase project and run the following command
+```bash
+-- Create the tasks table
+CREATE TABLE tasks (
+    task_id SERIAL PRIMARY KEY,              -- Auto-incrementing primary key for tasks
+    user_id INT REFERENCES users(user_id),   -- Foreign key referencing the users table
+    task TEXT NOT NULL,                      -- Task description
+    completed BOOLEAN DEFAULT FALSE,         -- Task completion status (default: false)
+    score JSON DEFAULT NULL,                 -- Score stored as JSON (default: null)
+    host_url TEXT DEFAULT NULL               -- Stores the video hosted URL
+);
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+-- Create the users table
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,              -- Auto-incrementing primary key
+    username VARCHAR(255) NOT NULL,          -- Username field
+    email VARCHAR(255) UNIQUE NOT NULL,      -- Email field (unique)
+    password VARCHAR(255) NOT NULL,          -- Password field
+    average_scores JSON NOT NULL,            -- Stores the average of all the scores that the user has so far
+    tasks_completed INT DEFAULT 0           -- Stores the total number of completed tasks (default: 0)
+);
 
-## Join the community
+```
 
-Join our community of developers creating universal apps.
+4. Environment Variables: Create a .env file and add the necessary API keys:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+  DB_USER=
+  DB_PASSWORD=
+  DB_HOST=
+  DB_PORT=
+  DB_NAME=
+  GROQ_API_KEY=
+  CEREBRAS_API_KEY=
+  HYGEN_API_KEY=""
+  TAVILY_API_KEY=
+  GOOGLE_API_KEY=
+  CLOUDINARY_KEY=
+  DEEPGRAM_API_KEY= 
+  SUPABASE_KEY=
+  SUPABASE_URL=
+```
+
+5. To finally start the project run
+```bash
+  npx expo start
+  cd server
+  python server.py
+```
+
+## User Workflow
+Amplify offers a meticulously designed and structured user experience, refined and optimized to ensure seamless and intuitive user interaction.
+
+[![user-workflow.png](https://i.postimg.cc/htVbpYxx/user-workflow.png)](https://postimg.cc/dhty045t)
+
+
+## Output
+
+
+[![Picsart-24-12-30-00-36-08-803.png](https://i.postimg.cc/9FnfRXnF/Picsart-24-12-30-00-36-08-803.png)](https://postimg.cc/rK5T7TTv)
+## Team
+
+- #### Tharunkumar S (https://github.com/TharunCodes07)
+- #### K S Venkatram (https://github.com/venkatramks)
+- #### Sarveshwar V (https://github.com/sarveshwar-1)

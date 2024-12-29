@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-dotenv
+aiofiles
+cloudinary
+psycopg2-binary
+langchain
+langchain-groq
+langchain-core
+langchain-community
+langgraph
+typing-extensions
+requests
+pydantic
+jsonschema

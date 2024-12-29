@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {StyleSheet, View, Text, TouchableOpacity, Dimensions, Animated, Platform, SafeAreaView, ImageBackground} from 'react-native';
-import { AnimatedCircularProgress } from 'react-native-circular-progress';
-import { useIsFocused } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';;
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  FlatList,
+  Dimensions,
+  Animated,
+  Platform,
+  SafeAreaView,
+} from 'react-native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import record from '@/functions/record';
 import transcribe from '@/functions/transcribe';
@@ -11,137 +20,108 @@ import Bot from '../components/Bot';
 import BotRecording from '../components/BotRecording';
 import BotSpeaking from '../components/BotSpeaking';
 import { supabase } from '../constants/Supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 
-interface ChatMessage {
-  role: 'assistant' | 'user';
-  content: string;
-}
-
-const windowWidth = Dimensions.get('window').width;
+const PRIMARYCOLOR = '#000000';
+const SECONDARYCOLOR = '#FFFFFF';
+const ACCENTCOLOR = '#35A2C1';
+const PRIMARYBORDERRADIUS = 10;
 const windowHeight = Dimensions.get('window').height;
-const statusBarHeight = Platform.OS === 'ios' ? 40 : 20;
-const bottomPadding = Platform.OS === 'ios' ? 34 : 20;
+const windowWidth = Dimensions.get('window').width;
 const tabWidth = windowWidth * 0.8;
-const tabHeight =  70; // Reduced size to 3/4th
-const tabOffset = (windowWidth - tabWidth) / 2;
 const tabItemWidth = tabWidth / 3;
 
 
-export default function HomeScreen({ navigation }:any) {
+export default function HomeScreen({navigation}:any) {
+  const [loading,setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('Home');
+  
   const isFocused = useIsFocused();
-  const targetTasks = 100;
-  const [dailyActivitySteps, setDailyActivitySteps] = useState(13453);
-  const dailyTargetSteps = 30000;
-
-  const whiteBgAnim = useRef(new Animated.Value(0)).current;
-  const blackBgAnim = useRef(new Animated.Value(0)).current;
-  const jiggleAnim = useRef(new Animated.Value(0)).current;
-  const progressAnimation = useRef(new Animated.Value(0)).current;
-  const [progressFill, setProgressFill] = useState(0);
-
-
   const [recording, setRecording] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const audioRecorder = useRef<Audio.Recording>(new Audio.Recording());
-  const [transcription, setTranscription] = useState<string>("");
-  // const [chats, setChats] = useState<ChatMessage[]>([]);
+  const [tasks_completed, setTasksCompleted] = useState(0);
+  const [targetTasks] = useState(100);
+  const [dailyActivitySteps, setDailyActivitySteps] = useState(13453);
+  const [dailyTargetSteps] = useState(30000);
+  const [score, setScore] = useState({});
+  const [email,setEmail] = useState("");
+  const [username, setUsername] = useState("");
+
+  const audioRecorder = useRef(new Audio.Recording());
   const soundRef = useRef<Audio.Sound | null>(null);
-  const [email, setEmail] = useState<string>("dummyuser@example.com");
-  const [score, setScore] = useState<{}>({});
-  const [tasks_completed, setTasksCompleted] = useState<number>(0);
-  const [username, setUsername] = useState<string>("");
-
-
-  useEffect(() => {
-    if (isFocused) {
-      setActiveTab('Home');
-      Animated.spring(indicatorAnim, {
-        toValue: 0 * tabItemWidth, // Set to 'Home' tab index
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [isFocused]);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const indicatorAnim = useRef(new Animated.Value(tabItemWidth)).current;
   
 
   useEffect(() => {
-    const fetchUsernameByEmail = async  () => {
+    if (isFocused) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      fadeAnim.setValue(0);
+    }
+  }, [isFocused, fadeAnim]);
+
+  useEffect(() => {
+    // Fetch email from Async Storage
+    const fetchEmail = async () => {
+      try {
+        const storedEmail = await AsyncStorage.getItem('userEmail');
+        if (storedEmail) {
+          setEmail(storedEmail);
+        } else {
+          console.error('No email found in Async Storage');
+        }
+      } catch (error) {
+        console.error('Error fetching email from Async Storage:', error);
+      }
+    };
+
+    fetchEmail();
+  }, []);
+
+  useEffect(() => {
+    if (email) {
+      const fetchUserData = async () => {
         try {
           const { data, error } = await supabase
-            .from('users') 
-            .select('avg_scores , username, tasks_completed')
-            .eq('email', email) 
+            .from('users')
+            .select('avg_scores, username, tasks_completed')
+            .eq('email', email)
             .single();
+
           if (error) {
-            console.error('Error fetching username:', error.message);
+            console.error('Error fetching user data:', error.message);
             return;
           }
+
           setTasksCompleted(data.tasks_completed || 0);
           setUsername(data.username);
           setScore(data.avg_scores);
         } catch (err) {
           console.error('Unexpected error:', err);
-        } finally {
-          setLoading(false);
         }
+      };
+
+      fetchUserData();
     }
-    fetchUsernameByEmail();
-  },[]);
-  // useEffect(() => {
-  //   const initializeChat = async () => {
-  //     setLoading(true);
-  //     try {
-  //       const resp = await fetch('http://192.168.192.222:8000/resp', {
-  //         method: 'POST',
-  //         headers: {
-  //           'Content-Type': 'application/json',
-  //         },
-  //         body: JSON.stringify({
-  //           query: "",
-  //           email:"dummyuser@example.com"
-  //         }) 
-  //       });
-
-  //       if (!resp.ok) {
-  //         throw new Error('Network response was not ok'); 
-  //       }
-  //       const data = await resp.json();
-  //       const responseText = data.response;
-
-        
-  //       setChats(prevChats => [...prevChats, {
-  //         role: 'assistant',
-  //         content: responseText
-  //       }]);
-
-  //       await playResponse(responseText);
-
-  //     } catch (error) {
-  //       console.error('Error initializing chat:', error);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
-
-  //   initializeChat();
-  // }, []);
+  }, [email]);
 
   const startRecording = async () => {
     setRecording(true);
     await record(audioRecorder);
-  }
-  
+  };
+
   const stopRecording = async () => {
     setRecording(false);
     setLoading(true);
     try {
       const speechTranscription = await transcribe(audioRecorder);
-      setTranscription(speechTranscription as string);
-
       if (speechTranscription) {
-        
-        
         const response = await fetch('http://192.168.192.222:8000/resp', {
           method: 'POST',
           headers: {
@@ -149,8 +129,7 @@ export default function HomeScreen({ navigation }:any) {
           },
           body: JSON.stringify({
             query: speechTranscription,
-            email:"dummyuser@example.com"
-            
+            email: "dummyuser@example.com"
           })
         });
 
@@ -160,17 +139,16 @@ export default function HomeScreen({ navigation }:any) {
 
         const data = await response.json();
         const responseText = data.response;
-        
-        
 
         await playResponse(responseText);
       }
     } catch (err) {
       console.log("ERROR: ", err);
-    } finally {
-      setLoading(false);
     }
-  }
+    finally{
+      setLoading(false)
+    }
+  };
 
   const playResponse = async (text: string) => {
     try {
@@ -187,413 +165,292 @@ export default function HomeScreen({ navigation }:any) {
           setIsPlaying(false);
         }
       });
- 
     } catch (error) {
       console.error('Error playing audio:', error);
       setIsPlaying(false);
     }
   };
 
+  const DATA = [
+    {
+      id: 1,
+      name: "Content",
+      backgroundColor: "#FF6B6B",
+      icon: "book-outline",
+      value: score.content || 0,
+    },
+    {
+      id: 2,
+      name: "Fluency",
+      backgroundColor: "#4ECDC4",
+      icon: "speedometer-outline",
+      value: score.fluency || 0,
+    },
+    {
+      id: 3,
+      name: "Expression",
+      backgroundColor: "#FFD93D",
+      icon: "happy-outline",
+      value: score.expression || 0,
+    },
+  ];
 
-  // Floating Tab Bar State and Animation
-  const [activeTab, setActiveTab] = useState('Home');
-  const indicatorAnim = useRef(new Animated.Value(0)).current;
+  const renderPerformanceItem = ({ item }) => (
+    <View style={[styles.performanceItem, { backgroundColor: item.backgroundColor }]}>
+      <View style={styles.iconContainer}>
+        <Ionicons name={item.icon} size={30} color="#FFF" />
+      </View>
+      <Text style={styles.performanceValue}>{item.value}/10</Text>
+      <Text style={styles.performanceLabel}>{item.name}</Text>
+    </View>
+  );
 
-  useEffect(() => {
-    const calculatedProgress = (tasks_completed / targetTasks) * 100;
-
-    if (isFocused && activeTab === 'Home') {
-      progressAnimation.setValue(0);
-      whiteBgAnim.setValue(0);
-      blackBgAnim.setValue(0);
-      jiggleAnim.setValue(0);
-
-      Animated.timing(progressAnimation, {
-        toValue: calculatedProgress,
-        duration: 1000,
-        useNativeDriver: false,
-      }).start();
-
-      Animated.timing(whiteBgAnim, {
-        toValue: 1,
-        duration: 600,
+  const handleTabPress = (tabName: string, index: number) => {
+      setActiveTab(tabName);
+  
+      Animated.spring(indicatorAnim, {
+        toValue: index * tabItemWidth,
         useNativeDriver: true,
       }).start();
-
-      Animated.sequence([
-        Animated.delay(200),
-        Animated.timing(blackBgAnim, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      Animated.sequence([
-        Animated.timing(jiggleAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(jiggleAnim, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-      ]).start();
+  
+      if (tabName === 'Home') {
+        navigation.navigate('Home');
+      } else if (tabName === 'Tasks') {
+        navigation.navigate('Tasks');
+      }
+      else if (tabName === 'Profile'){
+      navigation.navigate('Profile')
     }
-
-    const progressListener = progressAnimation.addListener(({ value }) => {
-      setProgressFill(value);
-    });
-
-    return () => {
-      progressAnimation.removeListener(progressListener);
     };
-  }, [tasks_completed]);
-
-  const handleBoostLimit = () => {
-    // Handle boost limit logic
-  };
-
-  const whiteBgAnimationStyle = {
-    transform: [
-      {
-        translateY: whiteBgAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [windowHeight, 0],
-        }),
-      },
-      {
-        translateY: jiggleAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, -5, 0],
-        }),
-      },
-    ],
-  };
-
-  const blackBgAnimationStyle = {
-    transform: [
-      {
-        translateY: blackBgAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [-windowHeight, 0],
-        }),
-      },
-      {
-        translateY: jiggleAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, 5, 0],
-        }),
-      },
-    ],
-  };
-
-  // Floating Tab Bar Logic
-  const handleTabPress = (tabName: string, index: number) => {
-    setActiveTab(tabName);
-    Animated.spring(indicatorAnim, {
-      toValue: index * tabItemWidth,
-      useNativeDriver: true,
-    }).start();
-  
-    // Navigate to the corresponding screen
-    if (tabName === 'Home') {
-      navigation.navigate('Home');
-    } else if (tabName === 'Tasks') {
-      navigation.navigate('Tasks');
-    }
-  };
-  
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={[styles.container, { paddingTop: statusBarHeight }]}>
-        <Animated.View style={[styles.blackBackground, blackBgAnimationStyle]}>
-          <ImageBackground
-            source={require('../assets/images/2.webp')}
-            style={styles.imageBackground}
-            resizeMode="cover"
-          >
-            <View style={styles.summaryContainer}>
-              <Text style={styles.summaryTitle}>Summary Challenge</Text>
-              <AnimatedCircularProgress
-                size={windowWidth * 0.6}
-                width={20}
-                fill={progressFill}
-                tintColor="#90EE90"
-                backgroundColor="#3d3d3d"
-                rotation={-90}
-                lineCap="round"
-                arcSweepAngle={180}
-              >
-                {() => (
-                  <View style={styles.progressTextContainer}>
-                    <Text style={styles.stepsText}>{tasks_completed}</Text>
-                    <Text style={styles.targetText}>Tasks of {targetTasks}</Text>
-                  </View>
-                )}
-              </AnimatedCircularProgress>
-            </View>
-          </ImageBackground>
-        </Animated.View>
-
-        <Animated.View style={[styles.whiteBackground, whiteBgAnimationStyle]}>
-          <View style={styles.infoContainer}>
-            <View style={[styles.infoBox, { backgroundColor: '#ADD8E6' }]}>
-              <Text style={styles.infoIcon}>👟</Text>
-              <Text style={styles.infoValue}>{score.content}</Text>
-              <Text style={styles.infoLabel}>Content</Text>
-            </View>
-
-            <View style={[styles.infoBox, { backgroundColor: '#E0B0FF' }]}>
-              <Text style={styles.infoIcon}>🚶</Text>
-              <Text style={styles.infoValue}>{score.fluency}</Text>
-              <Text style={styles.infoLabel}>Fluency</Text>
-            </View>
-
-            <View style={[styles.infoBox, { backgroundColor: '#FFFF66' }]}>
-              <Text style={styles.infoIcon}>🔥</Text>
-              <Text style={styles.infoValue}>{score.expression}</Text>
-              <Text style={styles.infoLabel}>Expression</Text>
-            </View>
-          </View>
-          <View style={styles.dailyActivityContainer}>
-            <Text style={styles.dailyActivityTitle}>
-              Your in-app daily activity
+      <Animated.ScrollView style={[styles.container, { opacity: fadeAnim }]}>
+        <View style={styles.topView}>
+          <View style={styles.welcomeContainer}>
+            <Text style={styles.welcomeMessage}>
+              {"Hello, \n" + username}
             </Text>
-            <Text style={styles.dailyActivityStepsText}>
-              {dailyActivitySteps} / {dailyTargetSteps} steps
+            <Text style={styles.publicSpeakingText}>
+            Master the art of impactful eloquence.!
             </Text>
-            <TouchableOpacity
-              style={styles.boostButton}
-              onPress={handleBoostLimit}
-            >
-              <Text style={styles.boostIcon}>🚀</Text>
-              <Text style={styles.boostText}>Boost limit</Text>
-              <Text style={styles.boostArrow}>>></Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
 
-        {/* Floating Tab Bar */}
-        <View style={styles.tabBarContainer}>
-          <Animated.View
-            style={[
-              styles.indicator,
-              {
-                transform: [
-                  {
-                    translateX: indicatorAnim,
-                  },
-                ],
-              },
-            ]}
+          </View>
+        </View>
+
+        <View style={styles.bottomView}>
+          <View style={styles.statsCard}>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Tasks</Text>
+              <Text style={styles.statValue}>{tasks_completed}</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Target</Text>
+              <Text style={styles.statValue}>{targetTasks}</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Average</Text>
+              <Text style={styles.statValue}>{(score.content + score.expression + score.fluency)/3}</Text>
+            </View>
+            
+          </View>
+
+          <Text style={styles.sectionTitle}>Your Performance</Text>
+          <FlatList
+            data={DATA}
+            renderItem={renderPerformanceItem}
+            keyExtractor={(item) => item.id.toString()}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.performanceList}
           />
-
-          {['Home', 'Tasks', 'Profile'].map((tab, index) => (
-            <TouchableOpacity
-              key={tab}
-              style={styles.tabButton}
-              onPress={() => handleTabPress(tab, index)}
-            >
-              <Ionicons
-                name={
-                  tab === 'Home'
-                    ? 'home'
-                    : tab === 'Profile'
-                    ? 'person'
-                    : 'list'
-                }
-                size={24}
-                color={activeTab === tab ? '#000' : '#fff'}
-              />
-            </TouchableOpacity>
-          ))}
         </View>
+      </Animated.ScrollView>
 
-        <View>
+      <View style={styles.floatingNavContainer}>
+        {['home', 'list', 'person'].map((icon, index) => (
           <TouchableOpacity
-            onLongPress={startRecording}
-            onPressOut={stopRecording}
-            style={styles.botContainer}
+            key={icon}
+            style={styles.floatingNavItem}
+            onPress={() => handleTabPress(icon === 'home' ? 'Home' : icon === 'list' ? 'Tasks' : 'Profile', index)}
           >
-            {recording ? (
-              <BotRecording />
-            ) : isPlaying ? (
-              <BotSpeaking />
-            ) : (
-              <Bot />
-            )}
+            <Ionicons 
+              name={icon}
+              size={25} 
+              color={index === 0 ? ACCENTCOLOR : "#BDBEC1"} 
+            />
           </TouchableOpacity>
-        </View>
+        ))}
       </View>
+
+      <TouchableOpacity
+        onLongPress={startRecording}
+        onPressOut={stopRecording}
+        style={styles.botButton}
+      >
+        {recording ? (
+          <BotRecording />
+        ) : isPlaying ? (
+          <BotSpeaking />
+        ) : (
+          <Bot />
+        )}
+      </TouchableOpacity>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  backgroundImage: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-  },
   safeArea: {
     flex: 1,
-    // backgroundColor: '#121212', // Set a background color for the safe area
+    backgroundColor: SECONDARYCOLOR,
   },
   container: {
     flex: 1,
   },
-  blackBackground: {
-    height: windowHeight * 0.5, // Adjust height as needed
-    backgroundColor: '#121212',
-    justifyContent: 'center',
-    alignItems: 'center',
-    // paddingTop: statusBarHeight, // Add padding to avoid status bar overlap
+  topView: {
+    padding: 24,
+    paddingTop: Platform.OS === 'android' ? 40 : 0,
+    paddingBottom: 100,
+    backgroundColor: PRIMARYCOLOR,
   },
-  imageBackground: {
+  welcomeContainer: {
+    flex: 1, // Makes the container fill the available space
+    justifyContent: 'center', // Vertically center the content
+    alignItems: 'flex-start', // Align items to the left
+    paddingLeft: 5, // Add padding for better spacing from the left edge
+  },
+  
+  welcomeMessage: {
+    color: SECONDARYCOLOR,
+    fontSize: 32, // Prominent size for the welcome message
+    fontWeight: 'bold',
+    transform: [{ translateY: 25 }], // Move the text 5px down
+  },
+  
+  publicSpeakingText: {
+    color: 'rgba(255, 255, 255, 0.45)', // Subtle contrast for supporting text
+    fontSize: 18,
+    fontWeight: 'normal',
+    marginTop: 25, // Add spacing between the texts
+  },
+  
+  
+  
+  
+  bottomView: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
+    backgroundColor: SECONDARYCOLOR,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    marginTop: -30,
+    paddingTop: 30,
+    paddingHorizontal: 24,
+    paddingBottom: 100, 
   },
-  whiteBackground: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 40,
-    borderTopRightRadius: 40,
-  },
-  summaryContainer: {
-    alignItems: 'center',
-    marginTop: 25,
-  },
-  summaryTitle: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 50,
-  },
-  progressTextContainer: {
-    alignItems: 'center',
-  },
-  stepsText: {
-    color: '#fff',
-    fontSize: 40,
-    fontWeight: 'bold',
-  },
-  targetText: {
-    color: '#fff',
-    fontSize: 18,
-  },
-  infoContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 35,
-    paddingHorizontal: 20,
-  },
-  infoBox: {
-    borderRadius: 30,
-    padding: 18,
-    alignItems: 'center',
-    width: windowWidth * 0.28,
-  },
-  infoIcon: {
-    fontSize: 24,
-    marginBottom: 5,
-  },
-  infoValue: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  infoLabel: {
-    color: '#000',
-    fontSize: 14,
-  },
-  dailyActivityContainer: {
-    margin: 20,
-    borderRadius: 20,
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  dailyActivityTitle: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  dailyActivityStepsText: {
-    color: '#000',
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: 5,
-  },
-  boostButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 15,
-  },
-  boostIcon: {
-    fontSize: 24,
-    marginRight: 10,
-  },
-  boostText: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  boostArrow: {
-    marginLeft: 'auto',
-    color: '#000',
-    fontSize: 18,
-  },
-  // Floating Tab Bar Styles
-  tabBarContainer: {
-    position: 'absolute',
-    bottom: 15,
-    left: tabOffset,
-    width: tabWidth,
-    height: tabHeight,
-    backgroundColor: '#121212',
-    borderRadius: 40,
+  statsCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 0,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.5,
+    backgroundColor: SECONDARYCOLOR,
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 30,
     elevation: 5,
+    shadowColor: PRIMARYCOLOR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  indicator: {
-    position: 'absolute',
-    bottom: 17,
-    left: 9,
-    width: tabItemWidth - 17,
-    height: 50 * 0.75,
-    backgroundColor: '#fff',
-    borderRadius: 25,
-    zIndex: -1,
-  },
-  tabButton: {
-    flex: 1,
+  statItem: {
     alignItems: 'center',
   },
-  tabText: {
-    marginTop: 5,
-    fontSize: 12 * 0.75, // Reduced font size proportionally
-    fontWeight: 'bold',
+  statLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
   },
-  botContainer: {
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: PRIMARYCOLOR,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: PRIMARYCOLOR,
+    marginBottom: 15,
+  },
+  performanceList: {
+    paddingBottom: 15,
+  },
+  performanceItem: {
+    width: windowWidth -277,
+    borderRadius: 15,
+    padding: 8,
+    alignItems: 'center',
+    marginRight: 7,
+    elevation: 5,
+    shadowColor: PRIMARYCOLOR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  iconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  performanceValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: SECONDARYCOLOR,
+    marginVertical: 5,
+  },
+  performanceLabel: {
+    fontSize: 14,
+    color: SECONDARYCOLOR,
+  },
+  floatingNavContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    paddingVertical: 15,
+    borderRadius: 30,
     position: 'absolute',
-    bottom: 70,
-    left: 30,
-    // Adjust as needed to center the bot
+    bottom: 20,
+    left: 20,
+    right: 20,
+    elevation: 5,
+    shadowColor: PRIMARYCOLOR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  floatingNavItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  botButton: {
+    position: 'absolute',
+    bottom: 90,
+    left: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: PRIMARYCOLOR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
 });

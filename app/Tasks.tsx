@@ -1,18 +1,30 @@
-import { FlatList, StyleSheet, Text, View, TouchableOpacity, Animated, Dimensions } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../constants/Supabase';
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  Animated,
+  Dimensions,
+  SafeAreaView,
+  Platform,
+} from 'react-native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import record from '@/functions/record';
 import { Audio } from 'expo-av';
+import { supabase } from '../constants/Supabase';
+import record from '@/functions/record';
 import transcribe from '@/functions/transcribe';
 import getAudio from '@/functions/toSpeech';
 import Bot from '../components/TaskBot';
 import BotRecording from '../components/TaskRecording';
 import BotSpeaking from '../components/TaskSpeaking';
-import {useRouter} from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
+import Markdown from 'react-native-markdown-display';
 
-
+const PRIMARYCOLOR = '#000000';
+const SECONDARYCOLOR = '#FFFFFF';
+const ACCENTCOLOR = '#35A2C1';
 
 const windowWidth = Dimensions.get('window').width;
 const tabWidth = windowWidth * 0.8;
@@ -28,30 +40,58 @@ interface Task {
   score: Record<string, any> | null;
 }
 
-export default function Tasks({ navigation }: any) {
+export default function Tasks({navigation} : any) {
+  const isFocused = useIsFocused();
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const audioRecorder = useRef<Audio.Recording>(new Audio.Recording());
-  const [transcription, setTranscription] = useState<string>("");
-  const soundRef = useRef<Audio.Sound | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [userId, setUserId] = useState<number>(1);
   const [activeTab, setActiveTab] = useState('Tasks');
-  const indicatorAnim = useRef(new Animated.Value(tabItemWidth)).current;
-  const isFocused = useIsFocused();
-  const router = useRouter()
 
+  const audioRecorder = useRef(new Audio.Recording());
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const indicatorAnim = useRef(new Animated.Value(tabItemWidth)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-      if (isFocused) {
-        setActiveTab('Tasks');
-        Animated.spring(indicatorAnim, {
-          toValue: 1 * tabItemWidth, 
-          useNativeDriver: true,
-        }).start();
+    if (isFocused) {
+      setActiveTab('Tasks');
+      Animated.spring(indicatorAnim, {
+        toValue: 1 * tabItemWidth,
+        useNativeDriver: true,
+      }).start();
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      fadeAnim.setValue(0);
+    }
+  }, [isFocused, indicatorAnim, fadeAnim]);
+
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('user_id', userId);
+
+        if (error) {
+          console.error('Error fetching Tasks:', error.message);
+          return;
+        }
+
+        setTasks(data as Task[]);
+      } catch (error) {
+        console.error('Error:', error);
       }
-    }, [isFocused]);
+    };
+
+    fetchTasks();
+  }, [userId]);
 
   const startRecording = async () => {
     setRecording(true);
@@ -63,7 +103,6 @@ export default function Tasks({ navigation }: any) {
     setLoading(true);
     try {
       const speechTranscription = await transcribe(audioRecorder);
-      setTranscription(speechTranscription as string);
 
       if (speechTranscription) {
         const response = await fetch('http://192.168.192.222:8000/resp', {
@@ -108,65 +147,36 @@ export default function Tasks({ navigation }: any) {
           setIsPlaying(false);
         }
       });
-
     } catch (error) {
       console.error('Error playing audio:', error);
       setIsPlaying(false);
     }
   };
 
-  useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('tasks')
-          .select('*')
-          .eq('user_id', userId);
-
-        if (error) {
-          console.error('Error fetching Tasks:', error.message);
-          return;
-        }
-
-        setTasks(data as Task[]);
-      } catch (error) {
-        console.error('Error:', error);
-      }
-    };
-
-    fetchTasks();
-  }, [userId]);
-
   const renderTasks = ({ item }: { item: Task }) => {
     const trimmedTask =
       item.task.split(' ').slice(0, 5).join(' ') +
       (item.task.split(' ').length > 5 ? '...' : '');
 
-
-  
     return (
       <TouchableOpacity
         style={styles.taskContainer}
         onPress={() => {
           navigation.navigate('ViewTask', { taskId: item.task_id });
         }}
-        
-        
-
       >
-        <Text style={styles.taskTitle}>{trimmedTask}</Text>
+        <Markdown style={markdownStyles}>{trimmedTask}</Markdown>
         <View style={styles.taskStatusContainer}>
           <Text style={[styles.taskStatus, item.completed ? styles.completed : styles.pending]}>
             {item.completed ? 'Completed' : 'Pending'}
           </Text>
         </View>
         {item.score && (
-          <Text style={styles.taskScore}>Score: {JSON.stringify(item.score)}</Text>
+          <Text style={styles.taskScore}>Content: {item.score.content}, Fluency: {item.score.fluency}, Expression: {item.score.expression}</Text>
         )}
       </TouchableOpacity>
     );
   };
-  
 
   const handleTabPress = (tabName: string, index: number) => {
     setActiveTab(tabName);
@@ -180,60 +190,47 @@ export default function Tasks({ navigation }: any) {
       navigation.navigate('Home');
     } else if (tabName === 'Tasks') {
       navigation.navigate('Tasks');
+    } else if (tabName === 'Profile'){
+      navigation.navigate('Profile')
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Tasks</Text>
-      <FlatList
-        data={tasks}
-        renderItem={renderTasks}
-        keyExtractor={(item) => item.task_id.toString()}
-        style={styles.taskList}
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+        <View style={styles.topView}>
+          <Text style={styles.header}>Tasks</Text>
+        </View>
 
-      {/* Floating Tab Bar */}
-      <View style={styles.tabBarContainer}>
-        <Animated.View
-          style={[
-            styles.indicator,
-            {
-              transform: [
-                {
-                  translateX: indicatorAnim,
-                },
-              ],
-            },
-          ]}
-        />
-        {['Home', 'Tasks', 'Profile'].map((tab, index) => (
-          <TouchableOpacity
-            key={tab}
-            style={styles.tabButton}
-            onPress={() => handleTabPress(tab, index)}
-          >
-            <Ionicons
-              name={
-                tab === 'Home'
-                  ? 'home'
-                  : tab === 'Profile'
-                  ? 'person'
-                  : 'list'
-              }
-              size={24}
-              color={activeTab === tab ? '#000' : '#fff'}
-            />
-          </TouchableOpacity>
-        ))}
-      </View>
+        <View style={styles.bottomView}>
+          <FlatList
+            data={tasks}
+            renderItem={renderTasks}
+            keyExtractor={(item) => item.task_id.toString()}
+            style={styles.taskList}
+          />
+        </View>
 
-      {/* Bot Interaction */}
-      <View>
+        <View style={styles.floatingNavContainer}>
+          {['home', 'list', 'person'].map((icon, index) => (
+            <TouchableOpacity
+              key={icon}
+              style={styles.floatingNavItem}
+              onPress={() => handleTabPress(icon === 'home' ? 'Home' : icon === 'list' ? 'Tasks' : 'Profile', index)}
+            >
+              <Ionicons 
+                name={icon} 
+                size={25} 
+                color={activeTab === (icon === 'home' ? 'Home' : icon === 'list' ? 'Tasks' : 'Profile') ? ACCENTCOLOR : "#BDBEC1"} 
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <TouchableOpacity
           onLongPress={startRecording}
           onPressOut={stopRecording}
-          style={styles.botContainer}
+          style={styles.botButton}
         >
           {recording ? (
             <BotRecording />
@@ -243,35 +240,50 @@ export default function Tasks({ navigation }: any) {
             <Bot />
           )}
         </TouchableOpacity>
-      </View>
-    </View>
+      </Animated.View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: SECONDARYCOLOR,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    paddingTop: 40, // Add padding for status bar
+  },
+  topView: {
+    padding: 24,
+    paddingTop: Platform.OS === 'android' ? 40 : 0,
+    paddingBottom: 54,
+    backgroundColor: PRIMARYCOLOR,
+  },
+  bottomView: {
+    flex: 1,
+    backgroundColor: SECONDARYCOLOR,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    marginTop: -30,
+    paddingTop: 30,
+    paddingHorizontal: 24,
+    paddingBottom: 100,
   },
   header: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#000',
+    color: SECONDARYCOLOR,
     marginBottom: 20,
-    marginLeft: 20,
-    marginTop: 20,
   },
   taskList: {
-    marginBottom: 100, // Add space for the floating tab bar
+    marginBottom: 100,
   },
   taskContainer: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 10,
+    backgroundColor: SECONDARYCOLOR,
+    borderRadius: 15,
     padding: 15,
     marginBottom: 10,
-    marginHorizontal: 20,
-    shadowColor: '#000',
+    shadowColor: PRIMARYCOLOR,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -279,11 +291,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-  },
-  taskTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
   },
   taskStatusContainer: {
     marginTop: 5,
@@ -296,47 +303,55 @@ const styles = StyleSheet.create({
     color: 'green',
   },
   pending: {
-    color: '#a9a9a9', // Slight gray
+    color: ACCENTCOLOR,
   },
   taskScore: {
     fontSize: 14,
     color: '#666',
     marginTop: 5,
   },
-  tabBarContainer: {
-    position: 'absolute',
-    bottom: 15,
-    left: tabOffset,
-    width: tabWidth,
-    height: tabHeight,
-    backgroundColor: '#121212',
-    borderRadius: 40,
+  floatingNavContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.5,
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    paddingVertical: 15,
+    borderRadius: 30,
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
     elevation: 5,
+    shadowColor: PRIMARYCOLOR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  indicator: {
-    position: 'absolute',
-    bottom: 17,
-    left: 9,
-    width: tabItemWidth - 17,
-    height: 50 * 0.75,
-    backgroundColor: '#fff',
-    borderRadius: 25,
-    zIndex: -1,
-  },
-  tabButton: {
-    flex: 1,
+  floatingNavItem: {
     alignItems: 'center',
+    justifyContent: 'center',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
-  botContainer: {
+  botButton: {
     position: 'absolute',
-    bottom: 50,
-    left: windowWidth - 170,
+    bottom: 90,
+    left: 280,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
 });
+
+const markdownStyles = StyleSheet.create({
+  body: {
+    color: PRIMARYCOLOR,
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  paragraph: {
+    marginVertical: 0,
+  },
+});
+

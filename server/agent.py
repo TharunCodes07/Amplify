@@ -18,6 +18,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import json
 import time
+import re
 
 load_dotenv()
 llm = ChatGroq(groq_api_key = os.getenv("GROQ_API_KEY"),model_name = "llama-3.1-70b-versatile")
@@ -101,7 +102,8 @@ def generate_scenario(user_id,interest):
     - Maintain a supportive and friendly tone in the scenario description.
     - Use language that is simple and easy to understand for users of all proficiency levels.
 
-    
+    8. **Response Structure**:
+    - The response should be in markdown format with ### for the headings. 
 
     ### Notes:
     - Previous Responses: {chat_history}
@@ -135,6 +137,7 @@ def generate_scenario(user_id,interest):
         return f"Scenario successfully generated {response['text']}"
 
     except psycopg2.Error as e:
+        print("Databse error", {e})
         return f"Database error: {e}"
     except Exception as e:
         return f"Error generating scenario: {e}"
@@ -165,12 +168,11 @@ def create_tool_node_with_fallback(tools: list) -> dict:
         [RunnableLambda(handle_tool_error)], exception_key="error"
     )
 
-s
+
 class State(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 template = '''
 You are an AI model designed to act as a friendly and engaging assistant for a public speaking improvement app. Your primary role is to interact with users in a conversational and supportive way, while also helping them complete tasks to improve their public speaking skills. You have access to two tools: `generate_scenario` and `TavilySearchResults`. Use these tools when necessary to provide meaningful and helpful responses.
-
 ### Key Behavior and Response Guidelines:
 
 1. **General Conversation**:
@@ -178,16 +180,14 @@ You are an AI model designed to act as a friendly and engaging assistant for a p
    - Address the user by their username to maintain a personal and approachable interaction style.
    - Avoid overly technical or robotic responses—keep the conversation warm and human-like.
    - Never respond to vulgar, offensive, or inappropriate language. Politely indicate that such language is unacceptable, but maintain professionalism.
-
-2. **Incomplete Tasks Handling**:
-   - If the user's incomplete tasks field is NULL:
-     - Ask the user if they would like to create a new task or scenario.
-     - If they reply "yes":
-       - Ask the user if there is a specific field or genre they would like the scenario to focus on (e.g., motivational speaking, professional presentations, storytelling).
+   - Unless required do not use the tools. If the user just wants to speak just reply with a normal conversation do not use any tool.
+   
+2. **Tasks Handling**:
+   - If the user's talks about tasks:
+       - Ask the user if there is a specific field or genre they would like the scenario to focus on.
        - If the user specifies an interest, pass it as the `interest` argument to the `generate_scenario(user_id, interest)` tool.
        - If the user says "there’s nothing specific," pass `NULL` as the `interest` argument and proceed with scenario generation.
-       - Provide a very brief and clear description of the generated scenario, focusing only on the most important details (e.g., "You’ve been tasked with delivering an inspiring speech at a school graduation ceremony.").
-     - If the user replies "no," continue assisting them with general queries or conversation.
+       - Provide a very brief and clear description of the generated scenario, focusing only on the most important detail like in the example : (e.g., "You’ve been tasked with delivering an inspiring speech at a school graduation ceremony on the topic "The future of AI"). The response should not exceed 160 characters
 
 3. **Tool Usage**:
    - **`generate_scenario`**:
@@ -339,7 +339,22 @@ def askAgent(query:str,config:dict) -> str:
     )
     return out.get("messages")[-1].content
 
+def extract_json(input_string):
+    try:
+        # Extract the JSON part using a regular expression
+        match = re.search(r'```json([\s\S]*?)```', input_string)
+        if match:
+            json_string = match.group(1).strip()  # Extract and strip any extra whitespace
+            return json.loads(json_string)  # Parse the JSON string into a Python dictionary
+        else:
+            print("No JSON found in the string.")
+            return None
+    except json.JSONDecodeError:
+        print("Invalid JSON format.")
+        return None
+
 def score(video_url,task,task_id):
+    print("Scoring")
     db_config = {
     "user": os.getenv("DB_USER"),
     "password": os.getenv("DB_PASSWORD"),
@@ -347,10 +362,10 @@ def score(video_url,task,task_id):
     "port": os.getenv("DB_PORT"),
     "dbname": os.getenv("DB_NAME"),
     }
-    model = genai.GenerativeModel(model_name="gemini-1.5-pro")
+    model = genai.GenerativeModel(model_name="gemini-exp-1206")
     prompt = f'''
     You are an advanced scoring AI tool designed to evaluate user-submitted videos of public speaking tasks. Your role is to analyze the video and its corresponding task, providing constructive feedback and scores to help users improve their public speaking skills. Your response must include only the evaluation output in the specified JSON format and exclude any code block syntax or additional text.
-
+    Make sure to take in the relevancy of the speech with respect to the topic
     ### Evaluation Guidelines:
 
     1. **Feedback Description**:
@@ -373,19 +388,6 @@ def score(video_url,task,task_id):
 
     3. **Output Format**:
       - Provide the evaluation strictly in this format:
-        {{
-          "feedback_description": "2000-character long feedback in paragraph format.",
-          "scores": {{
-            "content": 0-100,
-            "fluency": 0-100,
-            "expression": 0-100
-          }}
-        }}
-
-    4. **Unacceptable Format**:
-      - Do NOT include any code block syntax like ` ```json ` or any enclosing text outside the JSON.
-      - Example of unacceptable format:
-        ```
         ```json
         {{
           "feedback_description": "Example feedback.",
@@ -395,7 +397,6 @@ def score(video_url,task,task_id):
             "expression": 80
           }}
         }}
-        ```
         ```
 
     ### IMPORTANT:
@@ -419,7 +420,8 @@ def score(video_url,task,task_id):
         raise ValueError(video_file.state.name)
       response = model.generate_content([video_file,prompt],
                                     request_options={"timeout": 600})
-      parsed_output = json.loads(response.text)
+      print(response.text)
+      parsed_output = extract_json(response.text)
       connection = psycopg2.connect(**db_config)
       cursor = connection.cursor()
 
@@ -430,11 +432,12 @@ def score(video_url,task,task_id):
         """)
       cursor.execute(update_query, (json.dumps(parsed_output["scores"]), task_id))
       connection.commit()
-      return parsed_output
+      print(parsed_output["feedback_description"])
+      return parsed_output["feedback_description"]
     except psycopg2.Error as e:
        print(f'Databse Error: {e}')
     except Exception as e:
-        return f"Error scoring: {e}"
+        print(f"Error scoring: {e}")
     finally:
         if cursor:
             cursor.close()

@@ -10,6 +10,7 @@ import { ThemeProvider, DefaultTheme, DarkTheme } from '@react-navigation/native
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ViewTask from './(viewTask)/[taskId]';
 import Login from './Login';
+import ProfileScreen from './ProfileScreen';
 
 const Stack = createStackNavigator();
 SplashScreen.preventAutoHideAsync();
@@ -47,7 +48,9 @@ export default function App() {
         <Stack.Screen name="Login" component={Login} options={{ headerShown: false }} />
         <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Tasks" component={Tasks} options={{ headerShown: false }} />
-        <Stack.Screen name="ViewTask" component={ViewTask} />
+        <Stack.Screen name="ViewTask" component={ViewTask} options={{headerShown:false}} />
+        <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
+
       </Stack.Navigator>
       <StatusBar style="auto" />
     </ThemeProvider>
